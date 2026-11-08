@@ -3,7 +3,6 @@ mod state;
 mod compress;
 mod rotator;
 
-use std::path::PathBuf;
 use std::process;
 use clap::Parser;
 use colored::*;
