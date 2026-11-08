@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::fs;
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -229,7 +229,7 @@ fn parse_legacy(content: &str, base_dir: &Path) -> Result<Vec<LogEntry>> {
             "notifempty" => {
                 target.notifempty = Some(true);
             }
-            "notifempty" | "ifempty" => {
+            "ifempty" => {
                 target.notifempty = Some(false);
             }
             "dateext" => {
@@ -310,5 +310,37 @@ mod tests {
         assert_eq!(parse_size_to_bytes("100k"), 100 * 1024);
         assert_eq!(parse_size_to_bytes("10M"), 10 * 1024 * 1024);
         assert_eq!(parse_size_to_bytes("2G"), 2 * 1024 * 1024 * 1024);
+    }
+
+    #[test]
+    fn test_parse_toml_entries_with_global_defaults() {
+        let content = r#"
+[global]
+rotate = 5
+compress = true
+
+[[entries]]
+paths = ["/var/log/app.log"]
+frequency = "daily"
+notifempty = true
+"#;
+        let entries = parse_toml(content).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].paths, vec!["/var/log/app.log".to_string()]);
+        assert_eq!(entries[0].config.rotate, Some(5));
+        assert_eq!(entries[0].config.compress, Some(true));
+        assert_eq!(entries[0].config.frequency.as_deref(), Some("daily"));
+        assert_eq!(entries[0].config.notifempty, Some(true));
+    }
+
+    #[test]
+    fn test_parse_legacy_block() {
+        let content = "/var/log/app.log {\n  rotate 3\n  weekly\n  compress\n  ifempty\n}\n";
+        let entries = parse_legacy(content, Path::new("")).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].config.rotate, Some(3));
+        assert_eq!(entries[0].config.frequency.as_deref(), Some("weekly"));
+        assert_eq!(entries[0].config.compress, Some(true));
+        assert_eq!(entries[0].config.notifempty, Some(false));
     }
 }

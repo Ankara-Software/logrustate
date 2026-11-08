@@ -5,7 +5,8 @@ edition = "2024"
 authors = ["Anilcan Kara <anilcan@kara.dev>"]
 description = "A modern, drop-in replacement for logrotate — written in Rust"
 license = "MIT"
-repository = "https://github.com/anilcan-kara/logrustate"
+repository = "https://github.com/Ankara-Software/logrustate"
+homepage = "https://ankarayazilim.org/acik-kaynak/logrustate"
 
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }
@@ -22,3 +23,7 @@ flate2 = "1.0"
 opt-level = 3
 lto = true
 strip = true
+
+[[bin]]
+name = "logrustate"
+path = "src/main.rs"

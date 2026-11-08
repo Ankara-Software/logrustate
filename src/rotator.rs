@@ -1,8 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use anyhow::{Context, Result, anyhow};
-use chrono::{Local, Datelike};
+use anyhow::{Context, Result};
+use chrono::Local;
 use colored::*;
 
 use crate::config::{LogEntry, LogConfig};
@@ -297,7 +297,7 @@ impl<'a> Rotator<'a> {
     }
 
     fn create_new_log(&self, path: &Path, config: &LogConfig) -> Result<()> {
-        let mut file = fs::OpenOptions::new()
+        let file = fs::OpenOptions::new()
             .create(true)
             .write(true)
             .open(path)?;

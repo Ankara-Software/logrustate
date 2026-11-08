@@ -2,9 +2,9 @@
 set -e
 
 # logrustate Installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/anilcan-kara/logrustate/master/install.sh | sh
+# Usage: curl -fsSL https://raw.githubusercontent.com/Ankara-Software/logrustate/master/install.sh | sh
 
-REPO="anilcan-kara/logrustate"
+REPO="Ankara-Software/logrustate"
 VERSION="0.1.2"
 
 echo "Detecting system architecture..."
