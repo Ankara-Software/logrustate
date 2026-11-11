@@ -12,11 +12,17 @@ env:
 jobs:
   test:
     name: Test · ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: linux
+            runner: '["self-hosted","s31"]'
+          - os: macos
+            runner: '["self-hosted","macOS","s11"]'
+          - os: windows
+            runner: '["self-hosted","Windows","s18"]'
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -34,7 +40,7 @@ jobs:
 
   clippy:
     name: Clippy lint
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, s31]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -45,7 +51,7 @@ jobs:
 
   fmt:
     name: Rustfmt check
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, s31]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
