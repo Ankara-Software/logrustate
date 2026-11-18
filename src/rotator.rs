@@ -1,13 +1,13 @@
+use anyhow::Result;
+use chrono::Local;
+use colored::*;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use anyhow::{Context, Result};
-use chrono::Local;
-use colored::*;
 
-use crate::config::{LogEntry, LogConfig};
-use crate::state::StateDB;
 use crate::compress::compress_file;
+use crate::config::{LogConfig, LogEntry};
+use crate::state::StateDB;
 
 pub struct Rotator<'a> {
     pub state_db: &'a mut StateDB,
@@ -32,10 +32,10 @@ impl<'a> Rotator<'a> {
             if path_pattern.contains('*') || path_pattern.contains('?') {
                 if let Ok(paths) = glob::glob(path_pattern) {
                     for p_entry in paths {
-                        if let Ok(p) = p_entry {
-                            if p.is_file() {
-                                matched_files.push(p);
-                            }
+                        if let Ok(p) = p_entry
+                            && p.is_file()
+                        {
+                            matched_files.push(p);
                         }
                     }
                 }
@@ -68,32 +68,32 @@ impl<'a> Rotator<'a> {
             return Ok(());
         }
 
-        if let Some(ref script) = entry.config.prerotate {
-            if entry.config.sharedscripts == Some(true) {
-                self.run_script(script, &entry.paths.join(" "))?;
-            }
+        if let Some(ref script) = entry.config.prerotate
+            && entry.config.sharedscripts == Some(true)
+        {
+            self.run_script(script, &entry.paths.join(" "))?;
         }
 
         for file in &files_to_rotate {
-            if let Some(ref script) = entry.config.prerotate {
-                if entry.config.sharedscripts != Some(true) {
-                    self.run_script(script, &file.to_string_lossy())?;
-                }
+            if let Some(ref script) = entry.config.prerotate
+                && entry.config.sharedscripts != Some(true)
+            {
+                self.run_script(script, &file.to_string_lossy())?;
             }
 
             self.rotate_single_file(file, &entry.config)?;
 
-            if let Some(ref script) = entry.config.postrotate {
-                if entry.config.sharedscripts != Some(true) {
-                    self.run_script(script, &file.to_string_lossy())?;
-                }
+            if let Some(ref script) = entry.config.postrotate
+                && entry.config.sharedscripts != Some(true)
+            {
+                self.run_script(script, &file.to_string_lossy())?;
             }
         }
 
-        if let Some(ref script) = entry.config.postrotate {
-            if entry.config.sharedscripts == Some(true) {
-                self.run_script(script, &entry.paths.join(" "))?;
-            }
+        if let Some(ref script) = entry.config.postrotate
+            && entry.config.sharedscripts == Some(true)
+        {
+            self.run_script(script, &entry.paths.join(" "))?;
         }
 
         Ok(())
@@ -106,7 +106,9 @@ impl<'a> Rotator<'a> {
                 if config.missingok == Some(true) {
                     return Ok(false);
                 }
-                return Err(anyhow::Error::new(e).context(format!("Failed to get metadata for {:?}", path)));
+                return Err(
+                    anyhow::Error::new(e).context(format!("Failed to get metadata for {:?}", path))
+                );
             }
         };
 
@@ -133,31 +135,41 @@ impl<'a> Rotator<'a> {
             false
         };
 
-        if let Some(s) = config.size {
-            if size > s {
-                if self.verbose {
-                    println!("{:?} size {} exceeds size threshold {}, rotating.", path, size, s);
-                }
-                return Ok(true);
+        if let Some(s) = config.size
+            && size > s
+        {
+            if self.verbose {
+                println!(
+                    "{:?} size {} exceeds size threshold {}, rotating.",
+                    path, size, s
+                );
             }
+            return Ok(true);
         }
 
-        if let Some(mins) = config.minsize {
-            if size > mins && time_rotate {
-                if self.verbose {
-                    println!("{:?} size {} exceeds minsize {} and time threshold met, rotating.", path, size, mins);
-                }
-                return Ok(true);
+        if let Some(mins) = config.minsize
+            && size > mins
+            && time_rotate
+        {
+            if self.verbose {
+                println!(
+                    "{:?} size {} exceeds minsize {} and time threshold met, rotating.",
+                    path, size, mins
+                );
             }
+            return Ok(true);
         }
 
-        if let Some(maxs) = config.maxsize {
-            if size > maxs || time_rotate {
-                if self.verbose {
-                    println!("{:?} size {} exceeds maxsize {} or time threshold met, rotating.", path, size, maxs);
-                }
-                return Ok(true);
+        if let Some(maxs) = config.maxsize
+            && (size > maxs || time_rotate)
+        {
+            if self.verbose {
+                println!(
+                    "{:?} size {} exceeds maxsize {} or time threshold met, rotating.",
+                    path, size, maxs
+                );
             }
+            return Ok(true);
         }
 
         if time_rotate {
@@ -191,7 +203,11 @@ impl<'a> Rotator<'a> {
             path.parent().unwrap_or_else(|| Path::new("")).to_path_buf()
         };
 
-        let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let file_name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
 
         if config.dateext == Some(true) {
             let fmt = config.dateformat.as_deref().unwrap_or("-%Y%m%d");
@@ -200,12 +216,19 @@ impl<'a> Rotator<'a> {
             let mut dest_path = dest_base.join(&dest_name);
 
             if config.compress == Some(true) && config.delaycompress != Some(true) {
-                dest_path.set_extension(format!("{}{}", dest_path.extension().unwrap_or_default().to_string_lossy(), ".gz"));
+                dest_path.set_extension(format!(
+                    "{}{}",
+                    dest_path.extension().unwrap_or_default().to_string_lossy(),
+                    ".gz"
+                ));
             }
 
             if config.copytruncate == Some(true) {
                 fs::copy(path, &dest_path)?;
-                let file = fs::OpenOptions::new().write(true).truncate(true).open(path)?;
+                let file = fs::OpenOptions::new()
+                    .write(true)
+                    .truncate(true)
+                    .open(path)?;
                 file.set_len(0)?;
             } else {
                 fs::rename(path, &dest_path)?;
@@ -236,13 +259,17 @@ impl<'a> Rotator<'a> {
                 let dest_path_1 = self.get_rotated_path(&dest_base, &file_name, 1, config);
 
                 if config.copytruncate == Some(true) {
-                    let copy_dest = if config.compress == Some(true) && config.delaycompress != Some(true) {
-                        dest_base.join(format!("{}.1", file_name))
-                    } else {
-                        dest_path_1.clone()
-                    };
+                    let copy_dest =
+                        if config.compress == Some(true) && config.delaycompress != Some(true) {
+                            dest_base.join(format!("{}.1", file_name))
+                        } else {
+                            dest_path_1.clone()
+                        };
                     fs::copy(path, &copy_dest)?;
-                    let file = fs::OpenOptions::new().write(true).truncate(true).open(path)?;
+                    let file = fs::OpenOptions::new()
+                        .write(true)
+                        .truncate(true)
+                        .open(path)?;
                     file.set_len(0)?;
 
                     if config.compress == Some(true) && config.delaycompress != Some(true) {
@@ -250,11 +277,12 @@ impl<'a> Rotator<'a> {
                         fs::remove_file(&copy_dest)?;
                     }
                 } else {
-                    let rename_dest = if config.compress == Some(true) && config.delaycompress != Some(true) {
-                        dest_base.join(format!("{}.1", file_name))
-                    } else {
-                        dest_path_1.clone()
-                    };
+                    let rename_dest =
+                        if config.compress == Some(true) && config.delaycompress != Some(true) {
+                            dest_base.join(format!("{}.1", file_name))
+                        } else {
+                            dest_path_1.clone()
+                        };
 
                     fs::rename(path, &rename_dest)?;
                     self.create_new_log(path, config)?;
@@ -281,7 +309,13 @@ impl<'a> Rotator<'a> {
         Ok(())
     }
 
-    fn get_rotated_path(&self, dest_base: &Path, file_name: &str, index: u32, config: &LogConfig) -> PathBuf {
+    fn get_rotated_path(
+        &self,
+        dest_base: &Path,
+        file_name: &str,
+        index: u32,
+        config: &LogConfig,
+    ) -> PathBuf {
         let is_compressed = config.compress == Some(true);
         let is_delayed = config.delaycompress == Some(true);
 
@@ -297,16 +331,15 @@ impl<'a> Rotator<'a> {
     }
 
     fn create_new_log(&self, path: &Path, config: &LogConfig) -> Result<()> {
-        let file = fs::OpenOptions::new()
+        fs::OpenOptions::new()
             .create(true)
             .write(true)
+            .truncate(true)
             .open(path)?;
-        file.set_len(0)?;
 
         if let Some(ref create_val) = config.create {
             let parts: Vec<&str> = create_val.split_whitespace().collect();
-            if !parts.is_empty() {
-            }
+            if !parts.is_empty() {}
         }
         Ok(())
     }
@@ -329,10 +362,7 @@ impl<'a> Rotator<'a> {
         match output {
             Ok(out) => {
                 if !out.status.success() {
-                    eprintln!(
-                        "Script failed with exit code: {:?}",
-                        out.status.code()
-                    );
+                    eprintln!("Script failed with exit code: {:?}", out.status.code());
                     if !out.stderr.is_empty() {
                         eprintln!("Error output: {}", String::from_utf8_lossy(&out.stderr));
                     }
