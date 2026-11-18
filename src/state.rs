@@ -1,8 +1,8 @@
+use anyhow::{Context, Result};
+use chrono::{Datelike, Local, NaiveDateTime, Timelike};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
-use anyhow::{Context, Result};
-use chrono::{NaiveDateTime, Local, Datelike, Timelike};
 
 pub struct StateDB {
     path: String,
@@ -24,10 +24,10 @@ impl StateDB {
             .with_context(|| format!("Failed to read state file: {}", path_str))?;
 
         let mut lines = content.lines();
-        if let Some(header) = lines.next() {
-            if !header.starts_with("logrotate state") && !header.starts_with("logrustate state") {
-            }
-        }
+        if let Some(header) = lines.next()
+            && !header.starts_with("logrotate state")
+            && !header.starts_with("logrustate state")
+        {}
 
         for line in lines {
             let line = line.trim();
@@ -35,24 +35,25 @@ impl StateDB {
                 continue;
             }
 
-            if let Some(first_quote) = line.find('"') {
-                if let Some(second_quote) = line[first_quote + 1..].find('"') {
-                    let path_val = &line[first_quote + 1..first_quote + 1 + second_quote];
-                    let date_part = line[first_quote + 1 + second_quote + 1..].trim();
+            if let Some(first_quote) = line.find('"')
+                && let Some(second_quote) = line[first_quote + 1..].find('"')
+            {
+                let path_val = &line[first_quote + 1..first_quote + 1 + second_quote];
+                let date_part = line[first_quote + 1 + second_quote + 1..].trim();
 
-                    let parts: Vec<&str> = date_part.split(|c| c == '-' || c == ':').collect();
-                    if parts.len() >= 6 {
-                        let year = parts[0].parse::<i32>().unwrap_or(1970);
-                        let month = parts[1].parse::<u32>().unwrap_or(1);
-                        let day = parts[2].parse::<u32>().unwrap_or(1);
-                        let hour = parts[3].parse::<u32>().unwrap_or(0);
-                        let min = parts[4].parse::<u32>().unwrap_or(0);
-                        let sec = parts[5].parse::<u32>().unwrap_or(0);
+                let parts: Vec<&str> = date_part.split(['-', ':']).collect();
+                if parts.len() >= 6 {
+                    let year = parts[0].parse::<i32>().unwrap_or(1970);
+                    let month = parts[1].parse::<u32>().unwrap_or(1);
+                    let day = parts[2].parse::<u32>().unwrap_or(1);
+                    let hour = parts[3].parse::<u32>().unwrap_or(0);
+                    let min = parts[4].parse::<u32>().unwrap_or(0);
+                    let sec = parts[5].parse::<u32>().unwrap_or(0);
 
-                        if let Some(dt) = chrono::NaiveDate::from_ymd_opt(year, month, day)
-                            .and_then(|d| d.and_hms_opt(hour, min, sec)) {
-                            entries.insert(path_val.to_string(), dt);
-                        }
+                    if let Some(dt) = chrono::NaiveDate::from_ymd_opt(year, month, day)
+                        .and_then(|d| d.and_hms_opt(hour, min, sec))
+                    {
+                        entries.insert(path_val.to_string(), dt);
                     }
                 }
             }
@@ -98,7 +99,8 @@ impl StateDB {
     }
 
     pub fn update(&mut self, path: &str) {
-        self.entries.insert(path.to_string(), Local::now().naive_local());
+        self.entries
+            .insert(path.to_string(), Local::now().naive_local());
     }
 
     pub fn should_rotate(&self, path: &str, frequency: &str) -> bool {

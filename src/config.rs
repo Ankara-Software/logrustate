@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::fs;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::Path;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LogConfig {
@@ -69,9 +69,17 @@ fn parse_toml(content: &str) -> Result<Vec<LogEntry>> {
         entry.config.missingok = entry.config.missingok.or(global.missingok);
         entry.config.notifempty = entry.config.notifempty.or(global.notifempty);
         entry.config.dateext = entry.config.dateext.or(global.dateext);
-        entry.config.dateformat = entry.config.dateformat.clone().or(global.dateformat.clone());
+        entry.config.dateformat = entry
+            .config
+            .dateformat
+            .clone()
+            .or(global.dateformat.clone());
         entry.config.olddir = entry.config.olddir.clone().or(global.olddir.clone());
-        entry.config.postrotate = entry.config.postrotate.clone().or(global.postrotate.clone());
+        entry.config.postrotate = entry
+            .config
+            .postrotate
+            .clone()
+            .or(global.postrotate.clone());
         entry.config.prerotate = entry.config.prerotate.clone().or(global.prerotate.clone());
         entry.config.sharedscripts = entry.config.sharedscripts.or(global.sharedscripts);
         entry.config.mail = entry.config.mail.clone().or(global.mail.clone());
@@ -98,8 +106,12 @@ fn parse_legacy(content: &str, base_dir: &Path) -> Result<Vec<LogEntry>> {
         if let Some(ref script_type) = current_script_type {
             if line == "endscript" {
                 match script_type.as_str() {
-                    "postrotate" => current_config.postrotate = Some(current_script_body.trim().to_string()),
-                    "prerotate" => current_config.prerotate = Some(current_script_body.trim().to_string()),
+                    "postrotate" => {
+                        current_config.postrotate = Some(current_script_body.trim().to_string())
+                    }
+                    "prerotate" => {
+                        current_config.prerotate = Some(current_script_body.trim().to_string())
+                    }
                     _ => {}
                 }
                 current_script_type = None;
@@ -113,24 +125,24 @@ fn parse_legacy(content: &str, base_dir: &Path) -> Result<Vec<LogEntry>> {
             continue;
         }
 
-        if line.starts_with("include ") {
-            let include_path_str = line["include ".len()..].trim();
+        if let Some(include_rest) = line.strip_prefix("include ") {
+            let include_path_str = include_rest.trim();
             let include_path = base_dir.join(include_path_str);
             if include_path.is_dir() {
                 if let Ok(dir_entries) = fs::read_dir(&include_path) {
                     for entry in dir_entries.flatten() {
                         let path = entry.path();
-                        if path.is_file() {
-                            if let Ok(sub_entries) = parse_config_file(&path) {
-                                entries.extend(sub_entries);
-                            }
+                        if path.is_file()
+                            && let Ok(sub_entries) = parse_config_file(&path)
+                        {
+                            entries.extend(sub_entries);
                         }
                     }
                 }
-            } else if include_path.is_file() {
-                if let Ok(sub_entries) = parse_config_file(&include_path) {
-                    entries.extend(sub_entries);
-                }
+            } else if include_path.is_file()
+                && let Ok(sub_entries) = parse_config_file(&include_path)
+            {
+                entries.extend(sub_entries);
             }
             continue;
         }
@@ -139,8 +151,8 @@ fn parse_legacy(content: &str, base_dir: &Path) -> Result<Vec<LogEntry>> {
             continue;
         }
 
-        if line.ends_with('{') {
-            let paths_str = line[..line.len() - 1].trim();
+        if let Some(paths_head) = line.strip_suffix('{') {
+            let paths_str = paths_head.trim();
             let paths: Vec<String> = paths_str
                 .split_whitespace()
                 .map(|s| s.trim_matches('"').to_string())
@@ -274,9 +286,17 @@ fn parse_legacy(content: &str, base_dir: &Path) -> Result<Vec<LogEntry>> {
         entry.config.missingok = entry.config.missingok.or(global.missingok);
         entry.config.notifempty = entry.config.notifempty.or(global.notifempty);
         entry.config.dateext = entry.config.dateext.or(global.dateext);
-        entry.config.dateformat = entry.config.dateformat.clone().or(global.dateformat.clone());
+        entry.config.dateformat = entry
+            .config
+            .dateformat
+            .clone()
+            .or(global.dateformat.clone());
         entry.config.olddir = entry.config.olddir.clone().or(global.olddir.clone());
-        entry.config.postrotate = entry.config.postrotate.clone().or(global.postrotate.clone());
+        entry.config.postrotate = entry
+            .config
+            .postrotate
+            .clone()
+            .or(global.postrotate.clone());
         entry.config.prerotate = entry.config.prerotate.clone().or(global.prerotate.clone());
         entry.config.sharedscripts = entry.config.sharedscripts.or(global.sharedscripts);
         entry.config.mail = entry.config.mail.clone().or(global.mail.clone());
@@ -287,7 +307,7 @@ fn parse_legacy(content: &str, base_dir: &Path) -> Result<Vec<LogEntry>> {
 
 fn parse_size_to_bytes(val: &str) -> u64 {
     let lower = val.to_lowercase();
-    let num_part: String = lower.chars().take_while(|c| c.is_digit(10)).collect();
+    let num_part: String = lower.chars().take_while(|c| c.is_ascii_digit()).collect();
     let num: u64 = num_part.parse().unwrap_or(0);
     if lower.ends_with('k') {
         num * 1024

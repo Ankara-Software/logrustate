@@ -1,11 +1,11 @@
-mod config;
-mod state;
 mod compress;
+mod config;
 mod rotator;
+mod state;
 
-use std::process;
 use clap::Parser;
 use colored::*;
+use std::process;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -18,16 +18,33 @@ struct Args {
     #[arg(help = "Path to the configuration file(s)", required = true)]
     configs: Vec<String>,
 
-    #[arg(short = 'd', long = "debug", help = "Debug mode: implies --verbose, does not modify any files (dry-run)")]
+    #[arg(
+        short = 'd',
+        long = "debug",
+        help = "Debug mode: implies --verbose, does not modify any files (dry-run)"
+    )]
     debug: bool,
 
-    #[arg(short = 'v', long = "verbose", help = "Verbose mode: print details during processing")]
+    #[arg(
+        short = 'v',
+        long = "verbose",
+        help = "Verbose mode: print details during processing"
+    )]
     verbose: bool,
 
-    #[arg(short = 'f', long = "force", help = "Force rotation of all logs, even if not yet scheduled")]
+    #[arg(
+        short = 'f',
+        long = "force",
+        help = "Force rotation of all logs, even if not yet scheduled"
+    )]
     force: bool,
 
-    #[arg(short = 's', long = "state", help = "Path to the state file", default_value = "/var/lib/logrustate/status")]
+    #[arg(
+        short = 's',
+        long = "state",
+        help = "Path to the state file",
+        default_value = "/var/lib/logrustate/status"
+    )]
     state_file: String,
 }
 
@@ -63,7 +80,12 @@ fn main() {
         let entries = match config::parse_config_file(path) {
             Ok(e) => e,
             Err(e) => {
-                eprintln!("{}: {:?} -> {:?}", "Error parsing configuration".red().bold(), path, e);
+                eprintln!(
+                    "{}: {:?} -> {:?}",
+                    "Error parsing configuration".red().bold(),
+                    path,
+                    e
+                );
                 process::exit(1);
             }
         };
