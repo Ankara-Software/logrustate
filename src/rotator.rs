@@ -210,39 +210,41 @@ impl<'a> Rotator<'a> {
             .to_string();
 
         if config.dateext == Some(true) {
-            let fmt = config.dateformat.as_deref().unwrap_or("-%Y%m%d");
-            let date_str = Local::now().format(fmt).to_string();
-            let dest_name = format!("{}{}", file_name, date_str);
-            let mut dest_path = dest_base.join(&dest_name);
-
-            if config.compress == Some(true) && config.delaycompress != Some(true) {
-                dest_path.set_extension(format!(
-                    "{}{}",
-                    dest_path.extension().unwrap_or_default().to_string_lossy(),
-                    ".gz"
-                ));
-            }
-
-            if config.copytruncate == Some(true) {
-                fs::copy(path, &dest_path)?;
-                let file = fs::OpenOptions::new()
-                    .write(true)
-                    .truncate(true)
-                    .open(path)?;
-                file.set_len(0)?;
+            if config.rotate == Some(0) {
+                self.rotate_without_backups(path, config)?;
             } else {
-                fs::rename(path, &dest_path)?;
-                self.create_new_log(path, config)?;
-            }
+                let fmt = config.dateformat.as_deref().unwrap_or("-%Y%m%d");
+                let date_str = Local::now().format(fmt).to_string();
+                let dest_name = format!("{}{}", file_name, date_str);
+                let mut dest_path = dest_base.join(&dest_name);
 
-            if config.compress == Some(true) && config.delaycompress != Some(true) {
-                let uncompressed = dest_base.join(&dest_name);
-                compress_file(&uncompressed, &dest_path)?;
-                fs::remove_file(&uncompressed)?;
+                if config.compress == Some(true) && config.delaycompress != Some(true) {
+                    dest_path.set_extension(format!(
+                        "{}{}",
+                        dest_path.extension().unwrap_or_default().to_string_lossy(),
+                        ".gz"
+                    ));
+                }
+
+                if config.copytruncate == Some(true) {
+                    fs::copy(path, &dest_path)?;
+                    Self::truncate_file(path)?;
+                } else {
+                    fs::rename(path, &dest_path)?;
+                    self.create_new_log(path, config)?;
+                }
+
+                if config.compress == Some(true) && config.delaycompress != Some(true) {
+                    let uncompressed = dest_base.join(&dest_name);
+                    compress_file(&uncompressed, &dest_path)?;
+                    fs::remove_file(&uncompressed)?;
+                }
             }
         } else {
             let max_rotate = config.rotate.unwrap_or(0);
-            if max_rotate > 0 {
+            if max_rotate == 0 {
+                self.rotate_without_backups(path, config)?;
+            } else {
                 let oldest_path = self.get_rotated_path(&dest_base, &file_name, max_rotate, config);
                 if oldest_path.exists() {
                     fs::remove_file(&oldest_path)?;
@@ -266,11 +268,7 @@ impl<'a> Rotator<'a> {
                             dest_path_1.clone()
                         };
                     fs::copy(path, &copy_dest)?;
-                    let file = fs::OpenOptions::new()
-                        .write(true)
-                        .truncate(true)
-                        .open(path)?;
-                    file.set_len(0)?;
+                    Self::truncate_file(path)?;
 
                     if config.compress == Some(true) && config.delaycompress != Some(true) {
                         compress_file(&copy_dest, &dest_path_1)?;
@@ -306,6 +304,24 @@ impl<'a> Rotator<'a> {
         }
 
         self.state_db.update(&path_str);
+        Ok(())
+    }
+
+    fn rotate_without_backups(&self, path: &Path, config: &LogConfig) -> Result<()> {
+        if config.copytruncate == Some(true) {
+            Self::truncate_file(path)
+        } else {
+            fs::remove_file(path)?;
+            self.create_new_log(path, config)
+        }
+    }
+
+    fn truncate_file(path: &Path) -> Result<()> {
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .truncate(true)
+            .open(path)?;
+        file.set_len(0)?;
         Ok(())
     }
 
@@ -374,5 +390,170 @@ impl<'a> Rotator<'a> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::parse_config_file;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static TEMP_SEQ: AtomicU64 = AtomicU64::new(0);
+
+    struct TempDir(PathBuf);
+
+    impl TempDir {
+        fn new(prefix: &str) -> Self {
+            let seq = TEMP_SEQ.fetch_add(1, Ordering::Relaxed);
+            let dir = std::env::temp_dir()
+                .join(format!("logrustate-{prefix}-{}-{seq}", std::process::id()));
+            fs::create_dir_all(&dir).unwrap();
+            Self(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn test_state_db(dir: &Path) -> StateDB {
+        let state_path = dir.join("state");
+        StateDB::load(state_path.to_str().unwrap()).unwrap()
+    }
+
+    #[test]
+    fn test_rotate_zero_with_copytruncate_truncates_without_backup() {
+        let dir = TempDir::new("zero-copytruncate");
+        let log_path = dir.path().join("app.log");
+        fs::write(&log_path, b"line 1\nline 2\n").unwrap();
+
+        let mut state_db = test_state_db(dir.path());
+        let mut rotator = Rotator::new(&mut state_db, false, false, true);
+        let entry = LogEntry {
+            paths: vec![log_path.to_string_lossy().to_string()],
+            config: LogConfig {
+                rotate: Some(0),
+                copytruncate: Some(true),
+                ..Default::default()
+            },
+        };
+
+        rotator.process_entry(&entry).unwrap();
+
+        assert_eq!(fs::read(&log_path).unwrap(), b"");
+        assert!(!dir.path().join("app.log.1").exists());
+        assert!(!dir.path().join("app.log.1.gz").exists());
+        assert!(state_db.entries.contains_key(&*log_path.to_string_lossy()));
+    }
+
+    #[test]
+    fn test_rotate_zero_without_copytruncate_replaces_without_backup() {
+        let dir = TempDir::new("zero-no-copytruncate");
+        let log_path = dir.path().join("app.log");
+        fs::write(&log_path, b"old content\n").unwrap();
+
+        let mut state_db = test_state_db(dir.path());
+        let mut rotator = Rotator::new(&mut state_db, false, false, true);
+        let entry = LogEntry {
+            paths: vec![log_path.to_string_lossy().to_string()],
+            config: LogConfig {
+                rotate: Some(0),
+                copytruncate: Some(false),
+                ..Default::default()
+            },
+        };
+
+        rotator.process_entry(&entry).unwrap();
+
+        assert!(log_path.exists());
+        assert_eq!(fs::read(&log_path).unwrap(), b"");
+        assert!(!dir.path().join("app.log.1").exists());
+    }
+
+    #[test]
+    fn test_rotate_zero_with_dateext_and_copytruncate_truncates_without_backup() {
+        let dir = TempDir::new("zero-dateext");
+        let log_path = dir.path().join("app.log");
+        fs::write(&log_path, b"dated log data\n").unwrap();
+
+        let mut state_db = test_state_db(dir.path());
+        let mut rotator = Rotator::new(&mut state_db, false, false, true);
+        let entry = LogEntry {
+            paths: vec![log_path.to_string_lossy().to_string()],
+            config: LogConfig {
+                rotate: Some(0),
+                dateext: Some(true),
+                copytruncate: Some(true),
+                ..Default::default()
+            },
+        };
+
+        rotator.process_entry(&entry).unwrap();
+
+        assert_eq!(fs::read(&log_path).unwrap(), b"");
+        let entries: Vec<_> = fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(entries, vec!["app.log"]);
+    }
+
+    #[test]
+    fn test_rotate_one_with_copytruncate_keeps_one_backup() {
+        let dir = TempDir::new("one-copytruncate");
+        let log_path = dir.path().join("app.log");
+        fs::write(&log_path, b"keep this line\n").unwrap();
+
+        let mut state_db = test_state_db(dir.path());
+        let mut rotator = Rotator::new(&mut state_db, false, false, true);
+        let entry = LogEntry {
+            paths: vec![log_path.to_string_lossy().to_string()],
+            config: LogConfig {
+                rotate: Some(1),
+                copytruncate: Some(true),
+                ..Default::default()
+            },
+        };
+
+        rotator.process_entry(&entry).unwrap();
+
+        assert_eq!(fs::read(&log_path).unwrap(), b"");
+        assert_eq!(
+            fs::read(dir.path().join("app.log.1")).unwrap(),
+            b"keep this line\n"
+        );
+    }
+
+    #[test]
+    fn test_legacy_config_rotate_zero_copytruncate_force() {
+        let dir = TempDir::new("legacy-zero");
+        let log_path = dir.path().join("service.log");
+        let conf_path = dir.path().join("service.conf");
+        fs::write(&log_path, b"some log payload\n").unwrap();
+        fs::write(
+            &conf_path,
+            format!(
+                "{} {{\n    copytruncate\n    rotate 0\n}}\n",
+                log_path.display()
+            ),
+        )
+        .unwrap();
+
+        let entries = parse_config_file(&conf_path).unwrap();
+        let mut state_db = test_state_db(dir.path());
+        let mut rotator = Rotator::new(&mut state_db, false, false, true);
+        for entry in &entries {
+            rotator.process_entry(entry).unwrap();
+        }
+
+        assert_eq!(fs::read(&log_path).unwrap(), b"");
+        assert!(!dir.path().join("service.log.1").exists());
     }
 }
