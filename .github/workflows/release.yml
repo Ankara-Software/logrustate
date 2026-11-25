@@ -9,23 +9,22 @@ permissions:
   contents: write
 
 jobs:
-  tickets:
-    name: Artifact tickets
+  prepare:
+    name: Create draft release
     runs-on: [self-hosted, s31]
-    outputs:
-      tickets: ${{ steps.t.outputs.tickets }}
     steps:
-      - id: t
-        uses: Ankara-Software/ci-actions/artifact-ticket@v1
+      - name: Create draft release
+        uses: softprops/action-gh-release@v2
         with:
-          names: logrustate-linux-x64 logrustate-linux-arm64 logrustate-darwin-x64 logrustate-darwin-arm64 logrustate-win32-x64.exe
-          hours: "6"
+          draft: true
+          generate_release_notes: true
 
   build:
     name: Build - ${{ matrix.target }}
-    needs: tickets
+    needs: prepare
     runs-on: ${{ fromJSON(matrix.runner) }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: linux
@@ -53,7 +52,6 @@ jobs:
             target: x86_64-pc-windows-msvc
             asset_name: logrustate-win32-x64.exe
             cross_arm64: false
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -91,81 +89,26 @@ jobs:
 
       - name: Prepare asset (Windows)
         if: matrix.os == 'windows'
-        run: |
-          Move-Item -Force "target\${{ matrix.target }}\release\logrustate.exe" "${{ matrix.asset_name }}"
+        run: Move-Item -Force "target\${{ matrix.target }}\release\logrustate.exe" "${{ matrix.asset_name }}"
 
       - name: Prepare asset (Unix)
         if: matrix.os != 'windows'
-        run: |
-          mv -f "target/${{ matrix.target }}/release/logrustate" "${{ matrix.asset_name }}"
+        run: mv -f "target/${{ matrix.target }}/release/logrustate" "${{ matrix.asset_name }}"
 
-      - name: Upload Artifact
-        uses: Ankara-Software/ci-actions/artifact-upload@v1
-        with:
-          name: ${{ matrix.asset_name }}
-          path: ${{ matrix.asset_name }}
-          ticket: ${{ toJSON(fromJSON(needs.tickets.outputs.tickets)[matrix.asset_name]) }}
-
-  release:
-    name: Create GitHub Release
-    needs: [tickets, build]
-    runs-on: [self-hosted, s31]
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Clean workspace artifact directories
-        run: rm -rf ./artifacts ./dist && mkdir -p ./artifacts ./dist
-
-      - name: Download logrustate-linux-x64
-        uses: Ankara-Software/ci-actions/artifact-download@v1
-        with:
-          name: logrustate-linux-x64
-          path: ./artifacts/logrustate-linux-x64
-          ticket: ${{ toJSON(fromJSON(needs.tickets.outputs.tickets)['logrustate-linux-x64']) }}
-
-      - name: Download logrustate-linux-arm64
-        uses: Ankara-Software/ci-actions/artifact-download@v1
-        with:
-          name: logrustate-linux-arm64
-          path: ./artifacts/logrustate-linux-arm64
-          ticket: ${{ toJSON(fromJSON(needs.tickets.outputs.tickets)['logrustate-linux-arm64']) }}
-
-      - name: Download logrustate-darwin-x64
-        uses: Ankara-Software/ci-actions/artifact-download@v1
-        with:
-          name: logrustate-darwin-x64
-          path: ./artifacts/logrustate-darwin-x64
-          ticket: ${{ toJSON(fromJSON(needs.tickets.outputs.tickets)['logrustate-darwin-x64']) }}
-
-      - name: Download logrustate-darwin-arm64
-        uses: Ankara-Software/ci-actions/artifact-download@v1
-        with:
-          name: logrustate-darwin-arm64
-          path: ./artifacts/logrustate-darwin-arm64
-          ticket: ${{ toJSON(fromJSON(needs.tickets.outputs.tickets)['logrustate-darwin-arm64']) }}
-
-      - name: Download logrustate-win32-x64.exe
-        uses: Ankara-Software/ci-actions/artifact-download@v1
-        with:
-          name: logrustate-win32-x64.exe
-          path: ./artifacts/logrustate-win32-x64.exe
-          ticket: ${{ toJSON(fromJSON(needs.tickets.outputs.tickets)['logrustate-win32-x64.exe']) }}
-
-      - name: Flatten artifacts directory
-        run: |
-          find ./artifacts -type f -exec cp {} ./dist/ \;
-          ls -la ./dist/
-
-      - name: Create Release and Upload Assets
+      - name: Upload asset to draft release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          files: |
-            dist/logrustate-linux-x64
-            dist/logrustate-linux-arm64
-            dist/logrustate-darwin-x64
-            dist/logrustate-darwin-arm64
-            dist/logrustate-win32-x64.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          draft: true
+          fail_on_unmatched_files: true
+          files: ${{ matrix.asset_name }}
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: [self-hosted, s31]
+    steps:
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: false
+          make_latest: true
