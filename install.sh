@@ -5,7 +5,7 @@ set -e
 # Usage: curl -fsSL https://raw.githubusercontent.com/Ankara-Software/logrustate/master/install.sh | sh
 
 REPO="Ankara-Software/logrustate"
-VERSION="0.1.2"
+VERSION="0.1.3"
 
 echo "Detecting system architecture..."
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')

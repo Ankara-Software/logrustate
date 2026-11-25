@@ -1,6 +1,6 @@
 Maintained by [Ankara Yazılım](https://github.com/Ankara-Software) | [Project page](https://ankarayazilim.org/acik-kaynak/logrustate)
 
-**Status: beta.** It builds, the 5 unit tests pass and rotation, compression and dry-run were run by hand on macOS. It supports a subset of the logrotate directives, and a few that are parsed are not applied yet (see [Limitations](#limitations)).
+**Status: beta.** It builds, the 10 unit tests pass and rotation, compression and dry-run were run by hand on macOS. It supports a subset of the logrotate directives, and a few that are parsed are not applied yet (see [Limitations](#limitations)).
 
 <div align="center">
 
